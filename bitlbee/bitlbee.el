@@ -1,4 +1,4 @@
-;; bitlbee.el --- Help get Bitlbee (http://www.bitlbee.org) up and running
+;;; bitlbee.el --- Help get Bitlbee (http://www.bitlbee.org) up and running
 ;;
 ;; Copyright (C) 2008 pmade inc. (Peter Jones pjones@pmade.com)
 ;;
