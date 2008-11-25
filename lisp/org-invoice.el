@@ -153,6 +153,10 @@ looks like tree2, where the level is 2."
       (setq long-date (format-time-string org-invoice-long-date-format raw-date)))
     (when (and org-invoice-strip-ts (string-match org-ts-regexp-both title))
       (setq title (replace-match "" nil nil title)))
+    (when (string-match "^[ \t]+" title)
+      (setq title (replace-match "" nil nil title)))
+    (when (string-match "[ \t]+$" title)
+      (setq title (replace-match "" nil nil title)))
     (setq work (org-hh:mm-string-to-minutes work))
     (setq rate (string-to-number rate))
     (setq org-invoice-current-item (list (cons 'title title)
@@ -369,7 +373,17 @@ RATE: Used to calculate the total price for an invoice item.
 Using this information, a report is generated that details the
 items grouped by days.  For each day you will be able to see the
 total number of hours worked, the total price, and the items
-worked on."
+worked on.
+
+You can place the invoice report anywhere in the tree you want.
+I place mine under a third-level heading like so:
+
+* Invoices
+** An Invoice Header
+*** [2008-11-25 Tue] An Invoice Item
+*** Invoice Report
+#+BEGIN: invoice
+#+END:"
   (interactive "P")
   (let ((report (org-invoice-in-report-p)))
     (when (and (not report) jump)
