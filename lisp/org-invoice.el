@@ -28,17 +28,23 @@
 ;; this by implementing an OrgMode dynamic block where invoice
 ;; information is aggregated so that it can be exported.
 ;;
-;; Future plans include integration with invoicing web sites, so that
-;; you can submit your invoice from OrgMode to a service such as
-;; Freshbooks.
+;; It also provides a library of functions that can be used to collect
+;; this invoice information and use it in other ways, such as
+;; submitting it to on-line invoicing tools.
+;;
+;; I'm already working on an elisp package to submit this invoice data
+;; to the FreshBooks on-line accounting tool.
 ;;
 ;; Usage:
 ;;
 ;; In your ~/.emacs:
-;; (require 'org-invoice)
+;; (autoload 'org-invoice-report "org-invoice")
+;; (autoload 'org-dblock-write:invoice "org-invoice")
 ;;
-;; In your OrgMode buffer:
-;; More to come.
+;; See the documentation in the following functions:
+;;
+;; `org-invoice-report'
+;; `org-dblock-write:invoice'
 ;;
 ;; Latest version:
 ;;
@@ -112,6 +118,9 @@ This hook is called repeatedly for each invoice item processed."
 
 (defvar org-invoice-total-price nil
   "The total invoice price for the summary line.")
+
+(defconst org-invoice-version "1.0.0"
+  "The org-invoice version number.")
 
 (defun org-invoice-goto-tree (&optional tree)
   "Move point to the heading that represents the head of the
@@ -256,16 +265,34 @@ heading that begins the invoice data, usually using the
              (org-map-entries 'org-invoice-heading-info t 'tree 'archive))))))
   
 (defun org-dblock-write:invoice (params)
-  "Function used by OrgMode for generating a dynamic block."
+  "Function called by OrgMode to write the invoice dblock.  To
+create an invoice dblock you can use the `org-invoice-report'
+function.
+
+The following parameters can be given to the invoice block (for
+information about dblock parameters, please see the Org manual):
+
+:scope Allows you to override the `org-invoice-default-level'
+       variable.  The only supported values right now are ones
+       that look like :tree1, :tree2, etc.
+
+:prices Set to nil to turn off the price column.
+
+:headers Set to nil to turn off the group headers.
+
+:summary Set to nil to turn off the final summary line."
   (let ((scope (plist-get params :scope))
         (org-invoice-table-params params)
         (zone (move-marker (make-marker) (point)))
         table)
-    (when (not scope) (setq scope 'invoice))
+    (unless scope (setq scope 'default))
+    (unless (plist-member params :price) (plist-put params :price t))
+    (unless (plist-member params :summary) (plist-put params :summary t))
+    (unless (plist-member params :headers) (plist-put params :headers t))
     (save-excursion
       (cond
        ((eq scope 'tree) (org-invoice-goto-tree "tree1"))
-       ((eq scope 'invoice) (org-invoice-goto-tree))
+       ((eq scope 'default) (org-invoice-goto-tree))
        ((symbolp scope) (org-invoice-goto-tree (symbol-name scope))))
       (setq table (org-invoice-collect-invoice-data))
       (goto-char zone)
@@ -285,14 +312,72 @@ heading that begins the invoice data, usually using the
 	   (>= (match-end 0) pos)
 	   start))))
 
-(defun org-invoice-report (&optional arg)
-  "FIXME"
+(defun org-invoice-report (&optional jump)
+  "Create or update an invoice dblock report.  If point is inside
+an existing invoice report, the report is updated.  If point
+isn't inside an invoice report, a new report is created.
+
+When called with a prefix argument, move to the first invoice
+report after point and update it.
+
+For information about various settings for the invoice report,
+see the `org-dblock-write:invoice' function documentation.
+
+An invoice report is created by reading a heading tree and
+collecting information from various properties.  It is assumed
+that all invoices start at a second level heading, but this can
+be configured using the `org-invoice-default-level' variable.
+
+Here is an example, where all invoices fall under the first-level
+heading Invoices:
+
+* Invoices
+** Client Foo (Jan 01 - Jan 15)
+*** [2008-01-01 Tue] Built New Server for Production
+*** [2008-01-02 Wed] Meeting with Team to Design New System
+** Client Bar (Jan 01 - Jan 15)
+*** [2008-01-01 Tue] Searched for Widgets on Google
+*** [2008-01-02 Wed] Billed You for Taking a Nap
+
+In this layout, invoices begin at level two, and invoice
+items (tasks) are at level three.  You'll notice that each level
+three heading starts with an inactive timestamp.  The timestamp
+can actually go anywhere you want, either in the heading, or in
+the text under the heading.  But you must have a timestamp
+somewhere so that the invoice report can group your items by
+date.
+
+Properties are used to collect various bits of information for
+the invoice.  All properties can be set on the invoice item
+headings, or anywhere in the tree.  The invoice report will scan
+up the tree looking for each of the properties.
+
+Properties used:
+
+CLOCKSUM: You can use the Org clock-in and clock-out commands to
+          create a CLOCKSUM property.  Also see WORK.
+
+WORK: An alternative to the CLOCKSUM property.  This property
+      should contain the amount of work that went into this
+      invoice item formatted as HH:MM (e.g. 01:30).
+
+RATE: Used to calculate the total price for an invoice item.
+      Should be the price per hour that you charge (e.g. 45.00).
+      It might make more sense to place this property higher in
+      the hierarchy than on the invoice item headings.
+
+Using this information, a report is generated that details the
+items grouped by days.  For each day you will be able to see the
+total number of hours worked, the total price, and the items
+worked on."
   (interactive "P")
-  (let (report-start)
-    (when (and arg (org-find-dblock "invoice"))
-      (org-show-entry))
-    (if (setq report-start (org-invoice-in-report-p))
-        (goto-char report-start)
+  (let ((report (org-invoice-in-report-p)))
+    (when (and (not report) jump)
+      (when (re-search-forward "^#\\+BEGIN:[ \t]+invoice" nil t)
+        (org-show-entry)
+        (beginning-of-line)
+        (setq report (point))))
+    (if report (goto-char report)
       (org-create-dblock (list :name "invoice")))
     (org-update-dblock)))
   
