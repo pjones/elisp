@@ -119,7 +119,7 @@ This hook is called repeatedly for each invoice item processed."
 (defvar org-invoice-total-price nil
   "The total invoice price for the summary line.")
 
-(defconst org-invoice-version "1.0.0"
+(defconst org-invoice-version "1.0.1"
   "The org-invoice version number.")
 
 (defun org-invoice-goto-tree (&optional tree)
@@ -146,8 +146,10 @@ looks like tree2, where the level is 2."
     (unless date (setq date (org-entry-get nil "TIMESTAMP_IA" 'selective)))
     (unless date (setq date (org-entry-get nil "TIMESTAMP" t)))
     (unless date (setq date (org-entry-get nil "TIMESTAMP_IA" t)))
-    (unless work (setq work (org-entry-get nil "CLOCKSUM" nil)))
-    (unless work (setq work "00:00"))
+    (unless work 
+      (setq work 
+            (org-minutes-to-hh:mm-string 
+             (or (get-text-property (point) :org-clock-minutes) 0))))
     (when date
       (setq raw-date (apply 'encode-time (org-parse-time-string date)))
       (setq long-date (format-time-string org-invoice-long-date-format raw-date)))
