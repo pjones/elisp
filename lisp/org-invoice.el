@@ -166,7 +166,7 @@ looks like tree2, where the level is 2."
           (cons 'work work)
           (cons 'rate rate)
           (cons 'level level)
-          (cons 'price (* rate (/ work 60.)))))
+          (cons 'price (* rate (/ work 60.0)))))
     (run-hook-with-args 'org-invoice-heading-hook)
     org-invoice-current-item))
 
