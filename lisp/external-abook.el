@@ -59,8 +59,10 @@ See http://www.mutt.org/doc/manual/manual-4.html#query for more information.")
   (if (null strings) nil
     (let ((elements (split-string (car strings) "\t+" t))
           (others (external-abook-parse (cdr strings))))
-      (append others (list (nreverse elements))))))
+      (append others (list (nreverse (external-abook-strip elements)))))))
 
+(defun external-abook-strip (elements)
+  (mapcar (lambda (s) (replace-regexp-in-string "[ \t]+$" "" s)) elements))
 (defun external-abook-make-string (address)
   "Create a valid email address string from the given address."
   (if (null address) nil
@@ -82,7 +84,7 @@ See http://www.mutt.org/doc/manual/manual-4.html#query for more information.")
   "Find text before point that should be used to search with."
   (let* ((end (point))
          (bol (save-excursion (beginning-of-line) (point)))
-         (start (save-excursion (search-backward-regexp "[ :]" bol t))))
+         (start (save-excursion (search-backward-regexp "[ :,]" bol t))))
     (if start (cons (1+ start) end) (cons bol end))))
 
 (defun external-abook-try-expand ()
