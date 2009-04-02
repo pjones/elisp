@@ -101,12 +101,16 @@ heading.  This can also be overridden in the CRYPTKEY property."
   (save-excursion
     (org-back-to-heading t)
     (forward-line)
-    (let ((epg-context (epg-make-context nil t t))
+    (let ((folded (org-invisible-p))
+	  (epg-context (epg-make-context nil t t))
           (crypt-key (org-crypt-key-for-heading))
           (beg (point))
           end encrypted-text)
       (when (and (not (looking-at "-----BEGIN PGP MESSAGE-----"))
-                 (or (outline-next-heading) (bolp)))
+		 (progn
+		   (org-end-of-subtree t t)
+		   (org-back-over-empty-lines)
+		   t))
         (setq end (point)
               encrypted-text
               (epg-encrypt-string 
@@ -115,6 +119,10 @@ heading.  This can also be overridden in the CRYPTKEY property."
                (epg-list-keys epg-context crypt-key)))
         (delete-region beg end)
         (insert encrypted-text)
+	(when folded
+	  (save-excursion
+	    (org-back-to-heading t)
+	    (hide-subtree)))
         nil))))
 
 (defun org-decrypt-entry ()
