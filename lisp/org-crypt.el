@@ -5,7 +5,7 @@
 
 ;; Emacs Lisp Archive Entry
 ;; Filename: org-crypt.el
-;; Version: 0.2
+;; Version: 0.3
 ;; Keywords: org-mode
 ;; Author: John Wiegley <johnw@gnu.org>
 ;; Maintainer: Peter Jones <pjones@pmade.com>
@@ -66,8 +66,6 @@
 ;; TODO:
 ;;   - Automatically hook into `before-save-hook' if so configured
 ;;   - Allow symmetric encryption as well
-;;   - Prevent additional newline after decryption
-;;   - Refold after encrypting/decrypting to preserve fold 
 
 (require 'epg)
 
@@ -134,6 +132,7 @@ heading.  This can also be overridden in the CRYPTKEY property."
       (let* ((beg (point))
              (end (save-excursion 
                     (search-forward "-----END PGP MESSAGE-----")
+                    (forward-line)
                     (point)))
              (epg-context (epg-make-context nil t t))
              (decrypted-text (epg-decrypt-string
