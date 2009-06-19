@@ -5,7 +5,7 @@
 
 ;; Emacs Lisp Archive Entry
 ;; Filename: org-crypt.el
-;; Version: 0.3
+;; Version: 0.4
 ;; Keywords: org-mode
 ;; Author: John Wiegley <johnw@gnu.org>
 ;; Maintainer: Peter Jones <pjones@pmade.com>
@@ -49,22 +49,17 @@
 ;;    only the intended recipient can read in a shared-org-mode-files
 ;;    scenario.
 ;;
-;; 3. Next, at the top of your org-mode buffer, add this line:
-;;
-;;      -*- mode: org; before-save-hook: (org-encrypt-entries) -*-
-;;
-;;    This ensures that entries marked for encryption are encrypted
-;;    whenever the file is saved.  If you want encryption to be
-;;    manual, use `org-encrypt-entries' or `org-encrypt-entry'.
-;;
-;; 4. To later decrypt an entry, use `org-decrypt-entries' or
+;; 3. To later decrypt an entry, use `org-decrypt-entries' or
 ;;    `org-decrypt-entry'.  It might be useful to bind this to a key,
 ;;    like C-c C-/.  I hope that in the future, C-c C-r can be might
 ;;    overloaded to also decrypt an entry if it's encrypted, since
 ;;    that fits nicely with the meaning of "reveal".
 ;;
+;; 4. To automatically encrypt all necessary entries when saving a
+;;    file, call `org-crypt-use-before-save-magic' after loading
+;;    org-crypt.el.
+;;
 ;; TODO:
-;;   - Automatically hook into `before-save-hook' if so configured
 ;;   - Allow symmetric encryption as well
 
 ;;; Thanks:
@@ -159,6 +154,13 @@ heading.  This can also be overridden in the CRYPTKEY property."
    'org-decrypt-entry
    (cdr (org-make-tags-matcher org-crypt-tag-matcher))))
 
+(defun org-crypt-use-before-save-magic ()
+  "Adds a hook that will automatically encrypt entries before a
+file is saved to disk."
+  (add-hook 
+   'org-mode-hook 
+   (lambda () (add-hook 'before-save-hook 'org-encrypt-entries nil t))))
+  
 (provide 'org-crypt)
 
 ;;; org-crypt.el ends here
