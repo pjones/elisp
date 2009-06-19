@@ -67,6 +67,10 @@
 ;;   - Automatically hook into `before-save-hook' if so configured
 ;;   - Allow symmetric encryption as well
 
+;;; Thanks:
+
+;; - Carsten Dominik
+;; - Vitaly Ostanin
 (require 'epg)
 
 (defgroup org-crypt nil
@@ -91,7 +95,7 @@ heading.  This can also be overridden in the CRYPTKEY property."
     (or (org-entry-get nil "CRYPTKEY" 'selective) 
         org-crypt-key
         (and (boundp 'epa-file-encrypt-to) epa-file-encrypt-to)
-        (error "no crypt key set"))))
+        (error "No crypt key set"))))
 
 (defun org-encrypt-entry ()
   "Encrypt the content of the current headline."
@@ -99,16 +103,14 @@ heading.  This can also be overridden in the CRYPTKEY property."
   (save-excursion
     (org-back-to-heading t)
     (forward-line)
-    (let ((folded (org-invisible-p))
-	  (epg-context (epg-make-context nil t t))
-          (crypt-key (org-crypt-key-for-heading))
-          (beg (point))
-          end encrypted-text)
-      (when (and (not (looking-at "-----BEGIN PGP MESSAGE-----"))
-		 (progn
-		   (org-end-of-subtree t t)
-		   (org-back-over-empty-lines)
-		   t))
+    (when (not (looking-at "-----BEGIN PGP MESSAGE-----"))
+      (let ((folded (org-invisible-p))
+	    (epg-context (epg-make-context nil t t))
+	    (crypt-key (org-crypt-key-for-heading))
+	    (beg (point))
+	    end encrypted-text)
+	(org-end-of-subtree t t)
+	(org-back-over-empty-lines)
         (setq end (point)
               encrypted-text
               (epg-encrypt-string 
@@ -135,9 +137,12 @@ heading.  This can also be overridden in the CRYPTKEY property."
                     (forward-line)
                     (point)))
              (epg-context (epg-make-context nil t t))
-             (decrypted-text (epg-decrypt-string
-                              epg-context
-                              (buffer-substring-no-properties beg end))))
+             (decrypted-text 
+	      (decode-coding-string
+	       (epg-decrypt-string
+		epg-context
+		(buffer-substring-no-properties beg end))
+	       'utf-8)))
         (delete-region beg end)
         (insert decrypted-text)
         nil))))
