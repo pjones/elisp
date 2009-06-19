@@ -1,0 +1,7 @@
+-*- mode: org -*-
+#+STARTUP: showall
+
+* Org Invoice
+  - [ ] Support different rates (daily, weekly, monthly)
+  - [ ] Add a column that indicates rate
+  - [ ] Support fixed price items
