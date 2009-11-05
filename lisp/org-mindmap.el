@@ -22,8 +22,27 @@
 ;; WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ;;
 ;; Commentary:
+;;
+;; M-x org-export-as-mindmap
+;;
+;; That command will export the current subtree as a mindmap.
+;; Actually, it will generated the LaTeX/TikZ needed to create the
+;; mindmap, and save it to a file.  For now, you'll need to compile
+;; the LaTeX yourself.
+;;
+;;
+;; TODO: Figure out how to achieve a better layout so that nodes
+;;       aren't all over the place.
+;;
+;; TODO: Add support for plain text items.  Maybe draw lines off their
+;;       parent node more like a traditional mindmap.
+;;
+;; TODO: Automatically generate a cropped PDF and remove intermediate
+;;       files.
+;;
+;; TODO: Figure out how to apply styles so that we can use global
+;;       styles but also provide overrides in org properties.
 (eval-when-compile
-  (require 'cl)
   (require 'org))
 
 (defgroup org-mindmap nil
@@ -35,7 +54,7 @@
 \\usepackage{tikz}
 \\usetikzlibrary{mindmap,trees}
 \\pagestyle{empty}
-\\begin{document}\n"
+\\begin{document}"
   "The LaTeX header used in mindmaps."
   :type 'string :group 'org-mindmap)
 
@@ -79,14 +98,11 @@
 (defvar org-mindmap-start-level 0
   "The heading level of the root node")
 
-(defun org-mindmap-walk-tree (offset)
+(defun org-mindmap-walk-tree (root)
   (let* ((title (org-no-properties (org-get-heading t)))
          (level (org-outline-level))
-         (ring  (- level org-mindmap-start-level))
-         (node  (concat "node[concept] {" title "}"))
-         (root  (= 0 offset))
-         (child-offset 0)
-         (start-from 0)
+         (style (org-entry-get nil "TIKZ_STYLE" t))
+         (child-style (when style (concat "[" style "]")))
          (children (save-excursion
                      (and (outline-next-heading) 
                           (> (org-outline-level) level))))
@@ -94,30 +110,16 @@
                    (and 
                     (outline-next-heading)
                     (>= (org-outline-level) level)))))
-    (unless root
-      (setq start-from (- 90 (* 45 (1- offset)))))
-;      (setq start-from (+ start-from (* 60 (abs (- (1- ring) (1- offset)))))))
     (with-current-buffer org-mindmap-export-buffer
-      (unless root (insert (concat (make-string level ?\ ) "child {")))
+      (unless root (insert (concat (make-string level ?\ ) "child" child-style " {")))
       (when (and (not root) children) (insert "\n"))
       (when (or root children) (insert (make-string level ?\ )))
       (when (and (not root) children) (insert " "))
-      (insert node)
-      (when children
-        (insert (concat 
-                 "\n"
-                 (make-string level ?\ )
-                 "[clockwise from="
-                 (number-to-string start-from)
-                 "]\n"))))
-    (while (and
-            children
-            (outline-next-heading)
-            (= (org-outline-level) (1+ level)))
-      (setq child-offset (1+ child-offset))
-      (org-mindmap-walk-tree child-offset))
+      (insert (concat "node[concept" (when style (concat "," style)) "] {" title "}")))
+    (while (and children (outline-next-heading) (= (org-outline-level) (1+ level)))
+      (org-mindmap-walk-tree nil))
     (when (and children (org-at-heading-p))
-      (outline-previous-heading))
+      (outline-previous-heading)) ;; back up, went too far
     (with-current-buffer org-mindmap-export-buffer
       (unless root (insert "}"))
       (when (and (not root) others) (insert "\n")))
@@ -136,7 +138,7 @@
           (generate-new-buffer (generate-new-buffer-name "*org-mindmap*")))
     (with-current-buffer org-mindmap-export-buffer
       (insert org-mindmap-header)
-      (insert "\\begin{tikzpicture}\n")
+      (insert "\n\\begin{tikzpicture}\n")
       (insert "\\path[")
       (insert (concat "root concept/.append style={" org-mindmap-style-root "},\n"))
       (insert (concat " level 1 concept/.append style={" org-mindmap-style-level-1 "},\n"))
@@ -145,15 +147,16 @@
       (insert (concat " level 4 concept/.append style={" org-mindmap-style-level-4 "},\n"))
       (when (> (length org-mindmap-style-other) 0)
         (insert (concat " " org-mindmap-style-other ",\n")))
-      (insert " mindmap]\n\n"))
+      (insert " mindmap,grow cyclic]\n\n"))
     (save-excursion
       (org-back-to-heading)
       (save-restriction
         (org-narrow-to-subtree)
-        (org-mindmap-walk-tree 0)))
+        (org-mindmap-walk-tree t)))
     (with-current-buffer org-mindmap-export-buffer
       (insert "\\end{tikzpicture}")
       (insert org-mindmap-footer)
       (write-file file-name t)
       (switch-to-buffer (current-buffer)))))
 
+(provide 'org-mindmap)
