@@ -50,14 +50,31 @@ been completed.")
 (defvar org-basecamp-todo-item-id-prefix
   "BASECAMP-TODOITEM-")
 
-(defun org-basecamp-make-request (path callback &optional cbargs)
+(defun org-basecamp-api-info (inherit)
+  "Load the Basecamp API information into an association list.
+If `inherit' is non-nil, walk up the org tree looking for it,
+otherwise only look for it on the current heading."
+  (let ((apikey  (org-entry-get nil "BASECAMP_API_KEY"  inherit))
+        (apihost (org-entry-get nil "BASECAMP_API_HOST" inherit))
+        (apissl  (org-entry-get nil "BASECAMP_API_SSL"  inherit))
+        (apiuser (org-entry-get nil "BASECAMP_API_USER" inherit)))
+    (if (or (not apikey) (not apihost) (not apiuser))
+        (if inherit (error "Basecamp properties not found in current tree")
+          (error "Basecamp properties not found on current heading")))
+    (list
+     (cons 'key  apikey)
+     (cons 'host apihost)
+     (cons 'ssl  (string= apissl "YES"))
+     (cons 'user apiuser))))
+  
+(defun org-basecamp-make-request (info path callback &optional cbargs)
   "Makes a request to Basecamp."
-  (let* ((apikey (org-entry-get nil "BASECAMP_API_KEY" nil))
-         (apihost (org-entry-get nil "BASECAMP_API_HOST" nil))
-         (apissl (org-entry-get nil "BASECAMP_API_SSL" nil))
-         (apiuser (org-entry-get nil "BASECAMP_USER_ID" nil))
-         (proto (if (string= apissl "YES") "https://" "http://"))
-         (port  (if (string= apissl "YES") ":443" ":80"))
+  (let* ((apikey (cdr (assoc 'key info)))
+         (apihost (cdr (assoc 'host info)))
+         (apissl (cdr (assoc 'ssl info)))
+         (apiuser (cdr (assoc 'user info)))
+         (proto (if apissl "https://" "http://"))
+         (port  (if apissl ":443" ":80"))
          (qs (concat "?" (if apiuser (concat "responsible_party=" apiuser))))
          (encoded (base64-encode-string (concat apikey ":X")))
          (auth (list (list (concat apihost port) (cons "Basecamp" encoded))))
@@ -65,8 +82,6 @@ been completed.")
          (url-basic-auth-storage 'auth)
          (url-request-method (or url-request-method "GET"))
          (url-request-extra-headers org-basecamp-extra-headers))
-    (if (or (not apikey) (not apihost))
-        (error "Basecamp properties not found on current heading, please see docs"))
     (url-retrieve url callback cbargs)))
 
 (defun org-basecamp-parse-results (status)
@@ -76,6 +91,21 @@ been completed.")
   (goto-char (point-min))
   (re-search-forward "\n\n")
   (xml-parse-region (point) (point-max)))
+
+(defun org-basecamp-null-cb (status msg)
+  (when (plist-get status :error)
+    (switch-to-buffer (current-buffer))
+    (error "Failed to make request to Basecamp"))
+  (message "%s" msg))
+
+(defun org-basecamp-item-id ()
+  "Returns the Basecamp ID for the current heading.  If the
+current heading doesn't have a Basecamp ID an error is raised."
+  (let* ((id (org-id-get))
+         (prefix (substring id 0 (length org-basecamp-todo-item-id-prefix))))
+    (unless (string= org-basecamp-todo-item-id-prefix prefix)
+      (error "Current heading doesn't have a Basecamp ID"))
+    (substring id (length org-basecamp-todo-item-id-prefix))))
 
 (defun org-basecamp:xml-child-content (node child-name)
   "Returns the content of the first matching child node."
@@ -141,9 +171,80 @@ been completed.")
           (hide-subtree))))))
             
 (defun org-basecamp-pull-todo ()
+  "Download all to-do lists with their to-do items and create org
+headings for items that don't exist locally.  You must run this
+function from a heading that contains the required Basecamp
+properties.  These are:
+
+  BASECAMP_API_KEY: Your Basecamp API key (log-in to Basecamp,
+                    click the \"My Info\" link.  On your profile
+                    page, look for the \"Show your tokens\" link,
+                    click it and then copy the API token)
+
+  BASECAMP_API_HOST: The domain name you use to access Basecamp,
+                     taken from the URL you use to access
+                     Basecamp, without any protocol or path
+                     information
+
+  BASECAMP_API_SSL: Optional. Set to YES if you are using SSL w/
+                    Basecamp (if the URL starts with https).
+                    Otherwise you can omit this property
+
+  BASECAMP_API_USER: Your Basecamp user ID (go to the \"My Info\"
+                     page and then copy your user ID from the
+                     URL, it will be between \"people\" and
+                     \"edit\", copy just the number
+
+Example:
+
+  * Projects
+   :PROPERTIES:
+   :BASECAMP_API_KEY: 72a5acxb3793a8a98c64f66811f44aed0205747jy
+   :BASECAMP_API_HOST: client.basecamphq.com
+   :BASECAMP_API_SSL: YES
+   :BASECAMP_API_USER: 495849836
+   :END:
+
+Headings will be created as children of the current heading."
   (interactive)
   (let ((cbargs (list (current-buffer) (point)))
-        (path "/todo_lists.xml"))
-    (org-basecamp-make-request path 'org-basecamp-pull-todo-cb cbargs)))
+        (path "/todo_lists.xml")
+        (info (org-basecamp-api-info nil)))
+    (org-basecamp-make-request info path 'org-basecamp-pull-todo-cb cbargs)))
+
+(defun org-basecamp-post-time ()
+  "Create a new Basecamp time tracking entry for the current
+heading.  The heading must have been downloaded from Basecamp
+using the `org-basecamp-pull-todo' function.  You will be
+prompted for the time to submit to Basecamp."
+  (interactive)
+  (let ((info (org-basecamp-api-info t))
+        (id (org-basecamp-item-id))
+        (url-request-method "POST")
+        (date (org-read-date nil t nil "Basecamp Time Entry"))
+        (org-clock-file-total-minutes nil)
+        (args (list "Submitted entry to Basecamp"))
+        decoded tstart tend minutes hours path url-request-data)
+    (save-excursion
+      (save-restriction
+        (org-narrow-to-subtree)
+        (setq decoded (decode-time date))
+        (setq tstart (encode-time 1 0 0 (nth 3 decoded) (nth 4 decoded) (nth 5 decoded)))
+        (setq tend (encode-time 59 59 23 (nth 3 decoded) (nth 4 decoded) (nth 5 decoded)))
+        (org-clock-sum tstart tend)
+        (setq minutes org-clock-file-total-minutes)
+        (if (= minutes 0) (setq minutes 60))
+        (setq minutes (org-minutes-to-hh:mm-string minutes))))
+    (setq minutes (read-string "Basecamp Entry Hours: " minutes nil minutes)
+          hours (number-to-string (/ (org-hh:mm-string-to-minutes minutes) 60.0))
+          path (concat "/todo_items/" id "/time_entries.xml")
+          url-request-data 
+          (concat "<time-entry>"
+                  "<person-id>" (cdr (assoc 'user info)) "</person-id>"
+                  "<date>" (format-time-string "%Y-%m-%d" date) "</date>"
+                  "<hours>" hours "</hours>"
+                  "<description>" "</description>"
+                  "</time-entry>\n"))
+    (org-basecamp-make-request info path 'org-basecamp-null-cb args)))
 
 (provide 'org-basecamp)
