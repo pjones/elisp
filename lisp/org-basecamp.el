@@ -22,6 +22,25 @@
 ;; WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ;;
 ;; Commentary:
+;;
+;; Simple integration with Basecamp to-do lists.
+;;
+;;  * Download to-do items and create org headings
+;;
+;;  * Submit a time entry for a to-do item
+;;
+;;  * Mark a to-do item and complete when marking DONE in org
+;;
+;; To use, see the documentation in `org-basecamp-pull-todo'.
+;;
+;; For Developers:
+;;
+;;  * Remember to add a newline to XML that is being sent to Basecamp.
+;;    If you don't, your connection will hang until a very long
+;;    timeout is reached.  I suspect this is a bug in Basecamp.
+;;
+;;  * If you are doing a PUT request that doesn't take any XML, you
+;;    need to at least send a newline or the web server will barf.
 (eval-when-compile
   (require 'org))
 
@@ -49,6 +68,8 @@ been completed.")
 
 (defvar org-basecamp-todo-item-id-prefix
   "BASECAMP-TODOITEM-")
+
+(defvar org-basecamp-updating nil)
 
 (defun org-basecamp-api-info (inherit)
   "Load the Basecamp API information into an association list.
@@ -98,14 +119,14 @@ otherwise only look for it on the current heading."
     (error "Failed to make request to Basecamp"))
   (message "%s" msg))
 
-(defun org-basecamp-item-id ()
+(defun org-basecamp-item-id (&optional noerror)
   "Returns the Basecamp ID for the current heading.  If the
 current heading doesn't have a Basecamp ID an error is raised."
   (let* ((id (org-id-get))
          (prefix (substring id 0 (length org-basecamp-todo-item-id-prefix))))
-    (unless (string= org-basecamp-todo-item-id-prefix prefix)
-      (error "Current heading doesn't have a Basecamp ID"))
-    (substring id (length org-basecamp-todo-item-id-prefix))))
+    (if (not (string= org-basecamp-todo-item-id-prefix prefix))
+        (if (not noerror) (error "Current heading doesn't have a Basecamp ID"))
+      (substring id (length org-basecamp-todo-item-id-prefix)))))
 
 (defun org-basecamp:xml-child-content (node child-name)
   "Returns the content of the first matching child node."
@@ -125,6 +146,7 @@ current heading doesn't have a Basecamp ID an error is raised."
 
 (defun org-basecamp-pull-todo-cb (status orgbuf point)
   (let ((doc (org-basecamp-parse-results status))
+        (org-basecamp-updating t)
         node heading last-tl tl-heading ti-heading ti-state id name)
     (with-current-buffer orgbuf
       (save-excursion
@@ -212,6 +234,22 @@ Headings will be created as children of the current heading."
         (info (org-basecamp-api-info nil)))
     (org-basecamp-make-request info path 'org-basecamp-pull-todo-cb cbargs)))
 
+(defun org-basecamp-complete-item ()
+  "Called from `org-after-todo-state-change-hook' and marks the
+task done on Basecamp."
+  (let ((id (org-basecamp-item-id t))
+        (prompt "Mark task completed on Basecamp? ")
+        (args (list "Item marked done on Basecamp"))
+        (url-request-method "PUT")
+        (url-request-data "\n")
+        info path)
+    (when (and (not org-basecamp-updating) id 
+               (member state org-done-keywords)
+               (y-or-n-p prompt))
+      (setq info (org-basecamp-api-info t))
+      (setq path (concat "/todo_items/" id "/complete.xml"))
+      (org-basecamp-make-request info path 'org-basecamp-null-cb args))))
+      
 (defun org-basecamp-post-time ()
   "Create a new Basecamp time tracking entry for the current
 heading.  The heading must have been downloaded from Basecamp
@@ -247,4 +285,5 @@ prompted for the time to submit to Basecamp."
                   "</time-entry>\n"))
     (org-basecamp-make-request info path 'org-basecamp-null-cb args)))
 
+(add-hook 'org-after-todo-state-change-hook 'org-basecamp-complete-item)
 (provide 'org-basecamp)
