@@ -123,7 +123,7 @@ otherwise only look for it on the current heading."
   "Returns the Basecamp ID for the current heading.  If the
 current heading doesn't have a Basecamp ID an error is raised."
   (let* ((id (org-id-get))
-         (prefix (substring id 0 (length org-basecamp-todo-item-id-prefix))))
+         (prefix (if id (substring id 0 (length org-basecamp-todo-item-id-prefix)) "")))
     (if (not (string= org-basecamp-todo-item-id-prefix prefix))
         (if (not noerror) (error "Current heading doesn't have a Basecamp ID"))
       (substring id (length org-basecamp-todo-item-id-prefix)))))
